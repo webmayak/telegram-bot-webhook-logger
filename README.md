@@ -10,6 +10,7 @@
 VIEWER_HASH=2f8f7d53c1a64e9c8a3f9c51
 PORT=8080
 DB_PATH=telegram_webhooks.sqlite3
+REQUIRE_DATA_MOUNT=0
 ```
 
 `VIEWER_HASH` задает скрытый путь к просмотру базы:
@@ -35,6 +36,7 @@ VIEWER_HASH=replace-with-random-secret
 HOST=127.0.0.1
 PORT=8080
 DB_PATH=telegram_webhooks.sqlite3
+REQUIRE_DATA_MOUNT=0
 ```
 
 ## Запуск в Docker
@@ -57,7 +59,44 @@ docker compose ps
 docker compose down
 ```
 
-SQLite-база хранится в Docker volume `telegram-webhook-data`, внутри контейнера по пути `/data/telegram_webhooks.sqlite3`. Это значение переопределяется в `docker-compose.yml`, чтобы локальный запуск мог использовать обычный файл `telegram_webhooks.sqlite3` рядом с приложением.
+SQLite-база хранится в Docker volume `telegram-webhook-data`, внутри контейнера по пути `/data/telegram_webhooks.sqlite3`. Volume имеет фиксированное имя `telegram-bot-webhook-logger-data`, чтобы база не менялась при смене имени compose-проекта или stack.
+
+В Docker включена защита `REQUIRE_DATA_MOUNT=1`: приложение не стартует, если путь базы не находится внутри явно примонтированного volume/bind mount. Это нужно, чтобы при деплое через Dockerfile или Dokploy база не создавалась тихо внутри одноразовой файловой системы контейнера.
+
+Для Dokploy нужно добавить persistent storage:
+
+```text
+container path: /data
+```
+
+Если запускаете контейнер вручную, обязательно примонтируйте постоянный volume:
+
+```powershell
+docker run -d `
+  -p 8080:8080 `
+  -e VIEWER_HASH=replace-with-random-secret `
+  -e REQUIRE_DATA_MOUNT=1 `
+  -v telegram-bot-webhook-logger-data:/data `
+  telegram-bot-webhook-logger
+```
+
+Не отключайте `REQUIRE_DATA_MOUNT` на сервере, иначе приложение снова сможет стартовать с нестабильной базой внутри контейнера.
+
+Если приложение уже работало в Docker Compose до появления фиксированного имени volume, старая база могла лежать в volume с именем вида `<project>_telegram-webhook-data`, например `telegram_telegram-webhook-data`. Перед обновлением проверьте:
+
+```powershell
+docker volume ls
+```
+
+Чтобы продолжить использовать уже существующий volume, временно замените имя volume в `docker-compose.yml`:
+
+```yaml
+volumes:
+  telegram-webhook-data:
+    name: existing-volume-name
+```
+
+После этого запустите `docker compose up -d`. Так контейнер подключится к старой базе, а не создаст пустую новую.
 
 ## Прием вебхуков
 

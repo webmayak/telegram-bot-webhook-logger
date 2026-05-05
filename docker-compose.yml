@@ -6,6 +6,7 @@ services:
     environment:
       DB_PATH: /data/telegram_webhooks.sqlite3
       HOST: 0.0.0.0
+      REQUIRE_DATA_MOUNT: "1"
     ports:
       - "${PORT:-8080}:8080"
     volumes:
@@ -14,3 +15,4 @@ services:
 
 volumes:
   telegram-webhook-data:
+    name: telegram-bot-webhook-logger-data

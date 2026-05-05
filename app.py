@@ -19,6 +19,10 @@ DEFAULT_VIEWER_HASH = "change-me"
 MAX_BODY_BYTES = 2 * 1024 * 1024
 
 
+def is_truthy(value: str | None) -> bool:
+    return (value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def load_dotenv(path: Path) -> None:
     if not path.exists():
         return
@@ -66,6 +70,54 @@ def init_db(db_path: Path) -> None:
             "CREATE INDEX IF NOT EXISTS idx_webhook_events_bot_token "
             "ON webhook_events(bot_token)"
         )
+
+
+def decode_mount_path(value: str) -> Path:
+    decoded = (
+        value.replace("\\040", " ")
+        .replace("\\011", "\t")
+        .replace("\\012", "\n")
+        .replace("\\134", "\\")
+    )
+    return Path(decoded)
+
+
+def is_path_in_mount(path: Path, mount_point: Path) -> bool:
+    candidate = path.as_posix().rstrip("/")
+    mount = mount_point.as_posix().rstrip("/")
+    return candidate == mount or candidate.startswith(f"{mount}/")
+
+
+def is_path_covered_by_linux_mount(path: Path, mountinfo_path: Path = Path("/proc/self/mountinfo")) -> bool:
+    if not mountinfo_path.exists():
+        return False
+
+    for line in mountinfo_path.read_text(encoding="utf-8").splitlines():
+        fields = line.split()
+        if len(fields) < 5:
+            continue
+
+        mount_point = decode_mount_path(fields[4])
+        if mount_point == Path("/"):
+            continue
+        if is_path_in_mount(path, mount_point):
+            return True
+
+    return False
+
+
+def ensure_required_data_mount(db_path: Path) -> None:
+    if not is_truthy(os.environ.get("REQUIRE_DATA_MOUNT")):
+        return
+
+    if is_path_covered_by_linux_mount(db_path):
+        return
+
+    raise RuntimeError(
+        "Persistent data mount is required but was not detected for "
+        f"{db_path}. Mount a persistent volume or bind mount at /data, "
+        "or set REQUIRE_DATA_MOUNT=0 only for disposable/local runs."
+    )
 
 
 def connect(db_path: Path) -> sqlite3.Connection:
@@ -487,6 +539,7 @@ def main() -> None:
     args = parser.parse_args()
 
     db_path = args.db.resolve()
+    ensure_required_data_mount(db_path)
     init_db(db_path)
     AppHandler.db_path = db_path
     AppHandler.viewer_hash = args.viewer_hash.strip("/")

@@ -13,6 +13,29 @@ import app
 
 
 class WebhookInboxTests(unittest.TestCase):
+    def test_data_mount_check_requires_explicit_mount(self) -> None:
+        mountinfo_path = app.BASE_DIR / f"test_mountinfo_{os.getpid()}.txt"
+        try:
+            mountinfo_path.write_text(
+                "1 0 8:1 / / rw,relatime - ext4 /dev/root rw\n",
+                encoding="utf-8",
+            )
+            self.assertFalse(
+                app.is_path_covered_by_linux_mount(Path("/data/telegram_webhooks.sqlite3"), mountinfo_path)
+            )
+
+            mountinfo_path.write_text(
+                "1 0 8:1 / / rw,relatime - ext4 /dev/root rw\n"
+                "2 1 0:42 / /data rw,relatime - ext4 /dev/volume rw\n",
+                encoding="utf-8",
+            )
+            self.assertTrue(
+                app.is_path_covered_by_linux_mount(Path("/data/telegram_webhooks.sqlite3"), mountinfo_path)
+            )
+        finally:
+            if mountinfo_path.exists():
+                mountinfo_path.unlink()
+
     def test_post_webhook_is_saved_to_sqlite(self) -> None:
         db_path = app.BASE_DIR / f"test_unittest_events_{os.getpid()}.sqlite3"
         if db_path.exists():
