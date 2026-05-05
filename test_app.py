@@ -36,6 +36,20 @@ class WebhookInboxTests(unittest.TestCase):
             if mountinfo_path.exists():
                 mountinfo_path.unlink()
 
+    def test_required_mount_rewrites_relative_db_path_to_data_dir(self) -> None:
+        original_value = os.environ.get("REQUIRE_DATA_MOUNT")
+        os.environ["REQUIRE_DATA_MOUNT"] = "1"
+        try:
+            self.assertEqual(
+                app.resolve_db_path(Path("telegram_webhooks.sqlite3")).as_posix().lower(),
+                Path("/data/telegram_webhooks.sqlite3").resolve().as_posix().lower(),
+            )
+        finally:
+            if original_value is None:
+                os.environ.pop("REQUIRE_DATA_MOUNT", None)
+            else:
+                os.environ["REQUIRE_DATA_MOUNT"] = original_value
+
     def test_post_webhook_is_saved_to_sqlite(self) -> None:
         db_path = app.BASE_DIR / f"test_unittest_events_{os.getpid()}.sqlite3"
         if db_path.exists():

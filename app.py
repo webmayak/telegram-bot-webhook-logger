@@ -120,6 +120,12 @@ def ensure_required_data_mount(db_path: Path) -> None:
     )
 
 
+def resolve_db_path(raw_db_path: Path) -> Path:
+    if is_truthy(os.environ.get("REQUIRE_DATA_MOUNT")) and not raw_db_path.is_absolute():
+        return (Path("/data") / raw_db_path).resolve()
+    return raw_db_path.resolve()
+
+
 def connect(db_path: Path) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
@@ -538,7 +544,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    db_path = args.db.resolve()
+    db_path = resolve_db_path(args.db)
     ensure_required_data_mount(db_path)
     init_db(db_path)
     AppHandler.db_path = db_path
